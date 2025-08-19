@@ -1,7 +1,8 @@
+
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { RedisService } from 'src/core/database/redis.service';
-import { EskizService } from './eskiz.service';
 import generateOtp from 'src/utils/generate-otp';
+import { EskizService } from './eskiz.service';
 @Injectable()
 export class OtpService {
   private ttlExpireOtp: number = 60;
@@ -11,7 +12,7 @@ export class OtpService {
   constructor(
     private redisService: RedisService,
     private eskizService: EskizService,
-  ) {}
+  ) { }
 
   getSessionToken() {
     const token = crypto.randomUUID();

@@ -35,7 +35,10 @@ export class AdminController {
   @Post('question-answer')
   async questionAnswer(@Body() questionAnswer: QuestionAnswer) {
     try {
-      return await this.adminService.addAnswerQuestion(questionAnswer);
+      console.log('keldi');
+      const temp = await this.adminService.addAnswerQuestion(questionAnswer);
+      console.log(temp);
+      return temp;
     } catch (error) {
       throw new HttpException(error.message, error.status);
     }

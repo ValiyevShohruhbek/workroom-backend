@@ -75,9 +75,19 @@ export class AuthController {
   }
 
   @Post('check-step-successfull-complate')
-  async checkStepSuccesfullComplate(@Body() body: CheckStepDto) {
+  async checkStepSuccesfullComplate(
+    @Body() body: CheckStepDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     try {
-      return await this.authService.checkStepSuccesfullComplate(body);
+      const temp = await this.authService.checkStepSuccesfullComplate(body);
+      res.cookie('token', temp.token, {
+        httpOnly: true,
+        path: '/',
+        maxAge: 2.05 * 60 * 60 * 1000,
+        secure: false,
+        sameSite: 'lax',
+      });
     } catch (error) {
       throw new HttpException(error.message, error.status);
     }

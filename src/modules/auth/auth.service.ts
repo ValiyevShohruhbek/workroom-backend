@@ -5,15 +5,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import bcrypt from 'bcrypt';
+import { PrismaService } from 'src/core/database/prisma.service';
+import { CheckProfileDto } from './dto/check-profile.dto';
+import { CheckStepDto } from './dto/check-step.dto';
+import { LoginAuthDto } from './dto/create-auth.dto';
+import { RegisterDto } from './dto/register-auth.dto';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { OtpService } from './otp.service';
-import { LoginAuthDto } from './dto/create-auth.dto';
-import { PrismaService } from 'src/core/database/prisma.service';
-import bcrypt from 'bcrypt';
-import { JwtService } from '@nestjs/jwt';
-import { RegisterDto } from './dto/register-auth.dto';
-import { CheckStepDto } from './dto/check-step.dto';
-import { CheckProfileDto } from './dto/check-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -21,7 +21,7 @@ export class AuthService {
     private otpService: OtpService,
     private readonly db: PrismaService,
     private readonly jwt: JwtService,
-  ) {}
+  ) { }
   async sendOtp(body: SendOtpDto) {
     const { phone_number } = body;
     await this.checkPhoneNumber(phone_number);
@@ -93,56 +93,70 @@ export class AuthService {
   async checkStepSuccesfullComplate(body: CheckStepDto) {
     const { user_id, step } = body;
 
-    const questions = await this.db.prisma.userProfileQuestions.findMany({
-      where: {
-        step_number: step,
-      },
-    });
-
-    const answers = await this.db.prisma.userProfileQuestionAnswers.count({
-      where: {
-        user_id: user_id,
-        question_id: { in: questions.map((q) => q.id) },
-      },
-    });
-
-    if (answers === questions.length)
-      throw new BadRequestException('Not all questions are answered');
-
-    for (let i = 1; i < step; i++) {
-      const prevStepQuestions =
-        await this.db.prisma.userProfileQuestions.findMany({
-          where: { step_number: i },
-        });
-
-      const prevStepAnswers =
-        await this.db.prisma.userProfileQuestionAnswers.count({
-          where: {
-            user_id: user_id,
-            question_id: { in: prevStepQuestions.map((q) => q.id) },
-          },
-        });
-
-      if (prevStepAnswers !== prevStepQuestions.length) {
-        throw new HttpException(
-          'You need to complete previous steps first.',
-          400,
-        );
-      }
-    }
-
-    const maxStep = await this.db.prisma.userProfileQuestions.aggregate({
-      _max: { step_number: true },
-    });
-
-    if (step === maxStep._max.step_number) {
-      await this.db.prisma.user.update({
-        where: { id: user_id },
-        data: { is_profile_complete: true },
+    try {
+      const questions = await this.db.prisma.userProfileQuestions.findMany({
+        where: { step_number: step },
       });
-    }
 
-    return { message: 'Step successfully completed.' };
+      if (!questions || questions.length === 0) {
+        throw new BadRequestException('No questions found for this step');
+      }
+
+      const answers = await this.db.prisma.userProfileQuestionAnswers.count({
+        where: {
+          user_id: user_id,
+          question_id: { in: questions.map((q) => q.id) },
+        },
+      });
+
+      if (answers !== questions.length) {
+        throw new BadRequestException('Not all questions are answered');
+      }
+
+      for (let i = 1; i < step; i++) {
+        const prevStepQuestions =
+          await this.db.prisma.userProfileQuestions.findMany({
+            where: { step_number: i },
+          });
+
+        const prevStepAnswers =
+          await this.db.prisma.userProfileQuestionAnswers.count({
+            where: {
+              user_id: user_id,
+              question_id: { in: prevStepQuestions.map((q) => q.id) },
+            },
+          });
+
+        if (prevStepAnswers !== prevStepQuestions.length) {
+          throw new HttpException(
+            'You need to complete previous steps first.',
+            400,
+          );
+        }
+      }
+
+      const maxStep = await this.db.prisma.userProfileQuestions.aggregate({
+        _max: { step_number: true },
+      });
+
+      if (!maxStep || !maxStep._max || !maxStep._max.step_number) {
+        throw new BadRequestException('Unable to retrieve max step');
+      }
+
+      if (step === maxStep._max.step_number) {
+        await this.db.prisma.user.update({
+          where: { id: user_id },
+          data: { is_profile_complete: true },
+        });
+      }
+
+      const token = await this.jwt.signAsync({ user_id });
+
+      return { message: 'Step successfully completed.', token };
+    } catch (error) {
+      console.error('Error in checkStepSuccesfullComplate:', error);
+      throw new HttpException(error.message, error.status || 500);
+    }
   }
 
   async checkProfileComplated(data: CheckProfileDto) {
